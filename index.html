@@ -1,31 +1,291 @@
 <!DOCTYPE html>
-<!-- A placeholder from the Home Sales template. Replace this file with your site's first page. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Under construction</title>
-  <!-- An empty icon, so the browser doesn't log an error looking for favicon.ico -->
+  <title>College-Town Home Sales Dashboard</title>
   <link rel="icon" href="data:,">
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
-    :root { color-scheme: light dark; }
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --fg: #1c1f24;
+      --muted: #5c6370;
+      --line: #dfe2e6;
+      --card: #f5f6f8;
+      --accent: #13294b;
+      --bar: #e84a27;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14161a;
+        --fg: #e8eaed;
+        --muted: #9aa0a8;
+        --line: #2c3036;
+        --card: #1e2126;
+        --accent: #9db4dc;
+        --bar: #ff7a59;
+      }
+    }
+    * { box-sizing: border-box; }
     body {
-      max-width: 40rem;
-      margin: 0 auto;
-      padding: 3rem 1rem;
-      font-family: system-ui, sans-serif;
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
       line-height: 1.5;
     }
-    footer { margin-top: 3rem; font-size: 0.875rem; opacity: 0.75; }
+    header, main, footer { max-width: 64rem; margin: 0 auto; padding: 0 1rem; }
+    header { padding-top: 2.5rem; }
+    h1 { margin: 0 0 0.25rem; font-size: 1.9rem; color: var(--accent); }
+    h2 { margin: 2.5rem 0 0.75rem; font-size: 1.25rem; }
+    .lede { margin: 0; color: var(--muted); max-width: 46rem; }
+    .controls { margin: 1.5rem 0 0; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    select { font: inherit; padding: 0.35rem 0.5rem; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); }
+    #status { margin-top: 1.5rem; color: var(--muted); }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.75rem; margin-top: 1.5rem; }
+    .tile { background: var(--card); border-radius: 8px; padding: 0.9rem 1rem; }
+    .tile .label { font-size: 0.85rem; color: var(--muted); }
+    .tile .value { font-size: 1.6rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .chart { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 0.75rem; align-items: center; }
+    .chart .name { font-size: 0.9rem; text-align: right; white-space: nowrap; }
+    .chart .track { position: relative; height: 1.4rem; }
+    .chart .bar { height: 100%; background: var(--bar); border-radius: 0 4px 4px 0; min-width: 2px; }
+    .chart .amt { position: absolute; top: 0; font-size: 0.8rem; line-height: 1.4rem; padding-left: 0.4rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+    th { cursor: pointer; user-select: none; color: var(--muted); font-weight: 600; }
+    th:hover { color: var(--fg); }
+    th[aria-sort="ascending"]::after { content: " \25B2"; font-size: 0.7em; }
+    th[aria-sort="descending"]::after { content: " \25BC"; font-size: 0.7em; }
+    td { font-variant-numeric: tabular-nums; }
+    .notes li { margin-bottom: 0.4rem; }
+    footer { margin: 3rem auto 2rem; font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 1rem; }
   </style>
 </head>
 <body>
+  <header>
+    <h1>College-Town Home Sales Dashboard</h1>
+    <p class="lede">Prices, price per square foot and time on market for home sales near 11 university campuses, computed in your browser from the College-town home sales dataset (sales closed March 2023 to March 2026).</p>
+    <div class="controls">
+      <label for="campus">Campus area:</label>
+      <select id="campus"><option value="">All campuses</option></select>
+    </div>
+  </header>
+
   <main>
-    <h1>This site is under construction</h1>
-    <p>It will show findings from the College-town home sales dataset.</p>
+    <p id="status">Loading 35,442 sales from data/college_town_home_sales.csv&hellip;</p>
+
+    <section id="summary" hidden>
+      <div class="tiles">
+        <div class="tile"><div class="label">Sales analyzed</div><div class="value" id="t-sales"></div></div>
+        <div class="tile"><div class="label">Median sale price</div><div class="value" id="t-price"></div></div>
+        <div class="tile"><div class="label">Median price per sq ft</div><div class="value" id="t-ppsf"></div></div>
+        <div class="tile"><div class="label">Median days on market</div><div class="value" id="t-dom"></div></div>
+      </div>
+
+      <h2>Median sale price by city</h2>
+      <div class="chart" id="chart"></div>
+
+      <h2>City comparison</h2>
+      <p class="lede">Click a column heading to sort.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-key="city">City</th>
+              <th data-key="campus">Campus</th>
+              <th data-key="sales">Sales</th>
+              <th data-key="price">Median price</th>
+              <th data-key="ppsf">Median $/sq ft</th>
+              <th data-key="dom">Median days on market</th>
+              <th data-key="listed">Has list date</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>How the numbers are calculated</h2>
+      <ul class="notes">
+        <li><strong>Price rule:</strong> sales under $10,000 are left out of every figure on this page (40 of 35,442 rows), because they are not plausible home prices. All other sales are kept, including very high prices; the page reports medians, which outliers barely move.</li>
+        <li><strong>Price per square foot</strong> uses only sales with a living area above 0 sq ft, so rows with a 0 or blank area do not divide by zero.</li>
+        <li><strong>Days on market</strong> is <code>contract_date</code> minus <code>list_date</code>, counted only on sales that have both dates. A blank date is not treated as zero. Sales with no list date (often new construction or off-market sales) are left out of this figure, so it describes listed homes only. The "Has list date" column shows what share of each city's sales had one.</li>
+        <li><strong>Every row is a separate sale.</strong> Rows are keyed by <code>listing_id</code> and never combined by street address, since many State College condo units share one address.</li>
+        <li><code>home_type</code> is not used, because the data description sheet flags it as unreliable.</li>
+        <li><strong>Campus area</strong> is the dataset's <code>university</code> column: the nearest campus to each home's coordinates.</li>
+      </ul>
+    </section>
   </main>
+
   <footer>
     <p>Data: College-town home sales dataset, version 1.0 (2026). University of Illinois-Deloitte Foundation Center for Business Emerging Technologies. Data collected March 2026.</p>
   </footer>
+
+  <script>
+    const MIN_PRICE = 10000;
+    const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+    const int = new Intl.NumberFormat("en-US");
+
+    let sales = [];
+    let sortKey = "price";
+    let sortDir = -1;
+
+    function median(values) {
+      const v = values.filter(Number.isFinite).sort((a, b) => a - b);
+      if (!v.length) return NaN;
+      const mid = Math.floor(v.length / 2);
+      return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+    }
+
+    function days(from, to) {
+      if (!from || !to) return NaN;
+      return (Date.parse(to + "T00:00:00Z") - Date.parse(from + "T00:00:00Z")) / 86400000;
+    }
+
+    function summarize(rows) {
+      const listed = rows.filter(r => r.list_date).length;
+      return {
+        sales: rows.length,
+        price: median(rows.map(r => r.price)),
+        ppsf: median(rows.map(r => r.ppsf)),
+        dom: median(rows.map(r => r.dom)),
+        listed: rows.length ? listed / rows.length : NaN
+      };
+    }
+
+    function fmtDays(d) {
+      return Number.isFinite(d) ? (Number.isInteger(d) ? d : d.toFixed(1)) + " days" : "n/a";
+    }
+
+    function render() {
+      const campus = document.getElementById("campus").value;
+      const rows = campus ? sales.filter(r => r.university === campus) : sales;
+
+      const all = summarize(rows);
+      document.getElementById("t-sales").textContent = int.format(all.sales);
+      document.getElementById("t-price").textContent = usd.format(Math.round(all.price));
+      document.getElementById("t-ppsf").textContent = usd.format(Math.round(all.ppsf));
+      document.getElementById("t-dom").textContent = fmtDays(all.dom);
+
+      const groups = new Map();
+      for (const r of rows) {
+        const key = r.city + ", " + r.state;
+        if (!groups.has(key)) groups.set(key, { city: key, campus: r.university, rows: [] });
+        groups.get(key).rows.push(r);
+      }
+      const cities = [...groups.values()].map(g => ({ city: g.city, campus: g.campus, ...summarize(g.rows) }));
+
+      const byPrice = [...cities].sort((a, b) => b.price - a.price);
+      const max = byPrice.length ? byPrice[0].price : 1;
+      const chart = document.getElementById("chart");
+      chart.replaceChildren();
+      for (const c of byPrice) {
+        const name = document.createElement("div");
+        name.className = "name";
+        name.textContent = c.city;
+        const track = document.createElement("div");
+        track.className = "track";
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        const pct = (c.price / max) * 78;
+        bar.style.width = pct + "%";
+        const amt = document.createElement("span");
+        amt.className = "amt";
+        amt.style.left = pct + "%";
+        amt.textContent = usd.format(Math.round(c.price)) + " (" + int.format(c.sales) + " sales)";
+        track.append(bar, amt);
+        chart.append(name, track);
+      }
+
+      cities.sort((a, b) => {
+        const x = a[sortKey], y = b[sortKey];
+        if (typeof x === "string") return sortDir * x.localeCompare(y);
+        return sortDir * ((Number.isFinite(x) ? x : -Infinity) - (Number.isFinite(y) ? y : -Infinity));
+      });
+      const tbody = document.getElementById("rows");
+      tbody.replaceChildren();
+      for (const c of cities) {
+        const tr = document.createElement("tr");
+        const cells = [
+          c.city,
+          c.campus,
+          int.format(c.sales),
+          usd.format(Math.round(c.price)),
+          usd.format(Math.round(c.ppsf)),
+          fmtDays(c.dom),
+          Math.round(c.listed * 100) + "%"
+        ];
+        for (const text of cells) {
+          const td = document.createElement("td");
+          td.textContent = text;
+          tr.append(td);
+        }
+        tbody.append(tr);
+      }
+      document.querySelectorAll("th").forEach(th => {
+        th.setAttribute("aria-sort", th.dataset.key === sortKey ? (sortDir > 0 ? "ascending" : "descending") : "none");
+      });
+    }
+
+    document.querySelectorAll("th").forEach(th => {
+      th.addEventListener("click", () => {
+        const key = th.dataset.key;
+        if (key === sortKey) sortDir = -sortDir;
+        else { sortKey = key; sortDir = (key === "city" || key === "campus") ? 1 : -1; }
+        render();
+      });
+    });
+    document.getElementById("campus").addEventListener("change", render);
+
+    Papa.parse("data/college_town_home_sales.csv", {
+      download: true,
+      header: true,
+      skipEmptyLines: true,
+      dynamicTyping: false,
+      complete: result => {
+        const raw = result.data;
+        sales = raw
+          .map(r => {
+            const price = Number(r.sale_price);
+            const area = Number(r.living_area_sqft);
+            return {
+              listing_id: r.listing_id,
+              city: r.city,
+              state: r.state,
+              university: r.university,
+              list_date: r.list_date,
+              price: price,
+              ppsf: r.living_area_sqft !== "" && area > 0 ? price / area : NaN,
+              dom: days(r.list_date, r.contract_date)
+            };
+          })
+          .filter(r => Number.isFinite(r.price) && r.price >= MIN_PRICE);
+
+        const campuses = [...new Set(sales.map(r => r.university))].sort();
+        const select = document.getElementById("campus");
+        for (const c of campuses) {
+          const opt = document.createElement("option");
+          opt.value = c;
+          opt.textContent = c;
+          select.append(opt);
+        }
+
+        document.getElementById("status").textContent =
+          "Showing " + int.format(sales.length) + " of " + int.format(raw.length) +
+          " sales (" + int.format(raw.length - sales.length) + " under $10,000 left out).";
+        document.getElementById("summary").hidden = false;
+        render();
+      },
+      error: err => {
+        document.getElementById("status").textContent = "Could not load the data: " + err.message;
+      }
+    });
+  </script>
 </body>
 </html>
